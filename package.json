@@ -1,0 +1,46 @@
+{
+  "name": "sistema-facturacion-movil",
+  "version": "1.0.0",
+  "description": "Sistema de facturación móvil sin recolección de datos",
+  "type": "module",
+  "dependencies": {
+    "@capacitor-community/admob": "^8.0.0",
+    "@capacitor-community/sqlite": "^6.0.2",
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.2",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/filesystem": "^6.0.3",
+    "@capacitor/share": "^6.0.4",
+    "date-fns": "^3.3.1",
+    "html2canvas": "^1.4.1",
+    "i18next": "^26.3.2",
+    "i18next-browser-languagedetector": "^8.2.1",
+    "lucide-react": "^0.344.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.6.0",
+    "react-i18next": "^17.0.8",
+    "react-router-dom": "^6.22.1",
+    "recharts": "^2.12.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.2.1",
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.1",
+    "ts-node": "^10.9.2",
+    "vite": "^5.1.4"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:open": "npx cap open android"
+  }
+}

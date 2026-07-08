@@ -1,0 +1,17 @@
+{
+    "appId": "com.sistemafacturacion.celu",
+    "appName": "Facturador",
+    "webDir": "dist",
+    "bundledWebRuntime": false,
+    "server": {
+        "androidScheme": "https"
+    },
+    "plugins": {
+        "CapacitorSQLite": {
+            "androidIsEncryption": false,
+            "androidBiometric": {
+                "biometricAuth": false
+            }
+        }
+    }
+}

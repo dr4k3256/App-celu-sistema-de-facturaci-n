@@ -1,0 +1,181 @@
+@import "tailwindcss";
+
+:root {
+  --background: 224 71% 4%;
+  --foreground: 213 31% 91%;
+  --muted: 223 47% 11%;
+  --muted-foreground: 215.4 16.3% 56.9%;
+  --accent: 216 34% 17%;
+  --accent-foreground: 210 40% 98%;
+  --popover: 224 71% 4%;
+  --popover-foreground: 215 20.2% 65.1%;
+  --border: 216 34% 17%;
+  --input: 216 34% 17%;
+  --card: 224 71% 4%;
+  --card-foreground: 213 31% 91%;
+  --primary: 210 40% 98%;
+  --primary-foreground: 222.2 47.4% 1.2%;
+  --secondary: 222.2 47.4% 11.2%;
+  --secondary-foreground: 210 40% 98%;
+  --destructive: 0 63% 31%;
+  --destructive: 0 78% 50%; /* vivid red for destructive actions */
+  --destructive-foreground: 210 40% 98%;
+  --ring: 216 34% 17%;
+  --radius: 0.5rem;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+}
+
+.glass {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius);
+}
+
+/* Desktop: keep backdrop blur */
+@media (min-width: 641px) {
+  .glass {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+}
+
+/* Mobile: use solid background to prevent rendering glitches */
+@media (max-width: 640px) {
+  .glass {
+    background: rgba(30, 41, 59, 0.95) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+  }
+}
+
+.gradient-bg {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+}
+
+button {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--accent));
+}
+
+/* Autofill override to keep dark background */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: hsl(var(--foreground)) !important;
+  -webkit-box-shadow: 0 0 0px 1000px hsl(var(--accent)) inset !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Dropdown option global fix for dark mode compatibility */
+option {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+/* Light theme overrides when `.light` class is present on the root element */
+.light {
+  --background: 210 40% 98%;
+  --foreground: 220 13% 12%;
+  --muted: 220 16% 96%;
+  --muted-foreground: 220 10% 40%;
+  --accent: 210 100% 99%;
+  --accent-foreground: 220 13% 12%;
+  --popover: 210 100% 99%;
+  --popover-foreground: 220 13% 12%;
+  --border: 220 16% 92%;
+  --input: 220 16% 92%;
+  --card: 210 100% 99%;
+  --card-foreground: 220 13% 12%;
+  --primary: 222.2 47.4% 11.2%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 98%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 50% 50%; /* Updated to a more vivid color */
+  --destructive-foreground: 0 0% 0%; /* Updated to a more vivid color */
+  --ring: 220 13% 12%;
+}
+
+.light .glass {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgba(16,24,40,0.06);
+  color: hsl(var(--foreground));
+}
+
+.light input, .light select, .light textarea {
+  background: hsl(var(--input));
+  color: hsl(var(--foreground));
+}
+
+/* Make native date/month picker icons visible in dark theme */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.2) sepia(0);
+  opacity: 0.95;
+}
+
+/* Fallback: ensure calendar SVG icons inherit current color where used */
+.glass svg, svg[class*="lucide-"], svg[class*="icon"] {
+  color: inherit;
+  stroke: currentColor;
+}
+
+/* Hide native calendar indicator when using custom picker button */
+input.no-native::-webkit-calendar-picker-indicator,
+input.no-native::-webkit-clear-button {
+  display: none !important;
+}
+input.no-native::-ms-clear {
+  display: none !important;
+}
+
+/* Fix rendering glitch on product grids during scroll on mobile */
+.product-grid {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Mobile scroll container - no glass effect */
+@media (max-width: 640px) {
+  .scroll-container {
+    background: rgba(30, 41, 59, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius);
+  }
+}

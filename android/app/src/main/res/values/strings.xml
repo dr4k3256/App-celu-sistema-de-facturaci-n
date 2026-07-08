@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Facturador</string>
+    <string name="title_activity_main">Facturador</string>
+    <string name="package_name">com.sistemafacturacion.celu</string>
+    <string name="custom_url_scheme">com.sistemafacturacion.celu</string>
+</resources>
