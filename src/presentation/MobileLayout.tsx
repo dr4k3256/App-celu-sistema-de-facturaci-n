@@ -3,14 +3,14 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, ShoppingCart, Package, CreditCard, Receipt, TrendingUp, History, ClipboardList, Lock, LogOut, User, FilePenLine, Globe } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-const MobileLayout = ({ children }: { children: React.ReactNode }) => {
+const MobileLayout = ({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const { t, i18n } = useTranslation();
 
     const handleLogout = () => {
-        sessionStorage.clear();
-        navigate('/home');
+        onLogout();
+        navigate('/');
     };
 
     const toggleLanguage = () => {
@@ -22,7 +22,7 @@ const MobileLayout = ({ children }: { children: React.ReactNode }) => {
     // y quizá un menú para el resto, pero para simplicidad mostraremos 4 o 5 principales
     // con un scroll horizontal si son muchos o un menú de hamburguesa. 
     // Usaremos un scroll horizontal en la barra inferior para tener todos a la mano.
-    const menuItems = [
+    const allMenuItems = [
         { name: t('menu.home'), path: '/home', icon: <LayoutDashboard size={20} /> },
         { name: t('menu.catalog'), path: '/catalog', icon: <Package size={20} /> },
         { name: t('menu.sales'), path: '/sales', icon: <ShoppingCart size={20} /> },
@@ -37,7 +37,29 @@ const MobileLayout = ({ children }: { children: React.ReactNode }) => {
         { name: t('menu.security'), path: '/security', icon: <Lock size={20} /> },
     ];
 
+    const [currentUser, setCurrentUser] = React.useState<any>(null);
+
+    React.useEffect(() => {
+        try {
+            const raw = localStorage.getItem('current_user');
+            if (raw) setCurrentUser(JSON.parse(raw));
+        } catch { /* ignore */ }
+    }, []);
+
+    const menuItems = React.useMemo(() => {
+        if (!currentUser || currentUser.role === 'ADMIN') return allMenuItems;
+        return allMenuItems.filter(item => 
+            ['/sales', '/facturas', '/quotes'].includes(item.path)
+        );
+    }, [currentUser, allMenuItems]);
+
     const currentMenu = menuItems.find(m => m.path === location.pathname);
+
+    const userInitials = React.useMemo(() => {
+        if (!currentUser) return 'AD';
+        const name = currentUser.name || currentUser.username || 'AD';
+        return name.substring(0, 2).toUpperCase();
+    }, [currentUser]);
 
     return (
         <div className="flex flex-col min-h-screen w-full overflow-hidden bg-background">
@@ -69,7 +91,7 @@ const MobileLayout = ({ children }: { children: React.ReactNode }) => {
                         <LogOut size={20} />
                     </button>
                     <div className="h-8 w-8 glass rounded-full flex items-center justify-center text-xs font-bold text-blue-400">
-                        AD
+                        {userInitials}
                     </div>
                 </div>
             </header>

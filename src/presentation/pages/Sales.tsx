@@ -50,6 +50,7 @@ const VariantSelectorModal = ({ isOpen, onClose, product, onSelect }: any) => {
 const ConfirmSaleModal = ({ isOpen, onClose, onConfirm, saleData, loading }: any) => {
     const { t } = useTranslation();
     const [isElectronic, setIsElectronic] = useState(false);
+    const [elecData, setElecData] = useState({ document: '', email: '', address: '' });
     if (!isOpen) return null;
 
     // Cada item ya viene con unitPrice calculado según priceType
@@ -84,22 +85,41 @@ const ConfirmSaleModal = ({ isOpen, onClose, onConfirm, saleData, loading }: any
                     </div>
                 </div>
 
-                <div className="flex items-center space-x-3 mb-5 sm:mb-8 p-3 sm:p-4 bg-blue-500/5 rounded-xl border border-blue-500/20">
-                    <input
-                        type="checkbox"
-                        id="electronic"
-                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
-                        checked={isElectronic}
-                        onChange={(e) => setIsElectronic(e.target.checked)}
-                    />
-                    <label htmlFor="electronic" className="text-sm font-medium cursor-pointer">Emitir Factura Electrónica</label>
+                <div className="flex flex-col space-y-4 mb-5 sm:mb-8">
+                    <div className="flex items-center space-x-3 p-3 sm:p-4 bg-blue-500/5 rounded-xl border border-blue-500/20">
+                        <input
+                            type="checkbox"
+                            id="electronic"
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                            checked={isElectronic}
+                            onChange={(e) => setIsElectronic(e.target.checked)}
+                        />
+                        <label htmlFor="electronic" className="text-sm font-medium cursor-pointer">Emitir Factura Electrónica</label>
+                    </div>
+
+                    {isElectronic && (
+                        <div className="space-y-3 p-4 border border-blue-500/30 rounded-xl bg-blue-500/5 animate-in fade-in slide-in-from-top-2">
+                            <div>
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">NIT / Cédula</label>
+                                <input type="text" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" value={elecData.document} onChange={e => setElecData({...elecData, document: e.target.value})} placeholder="Ej. 123456789" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Correo Electrónico</label>
+                                <input type="email" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" value={elecData.email} onChange={e => setElecData({...elecData, email: e.target.value})} placeholder="correo@ejemplo.com" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Dirección</label>
+                                <input type="text" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" value={elecData.address} onChange={e => setElecData({...elecData, address: e.target.value})} placeholder="Ej. Calle 123 #45-67" />
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex gap-3">
                     <button onClick={onClose} className="flex-1 py-3 glass rounded-xl font-bold text-sm">{t('common.cancel')}</button>
                     <button
-                        onClick={() => onConfirm(isElectronic)}
-                        disabled={loading}
+                        onClick={() => onConfirm(isElectronic, elecData)}
+                        disabled={loading || (isElectronic && (!elecData.document || !elecData.email))}
                         className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50 text-sm"
                     >
                         {loading ? 'PROCESANDO...' : 'CONFIRMAR Y PAGAR'}
@@ -335,13 +355,21 @@ const Sales = () => {
         fetchClients();
     }, []);
 
-    const handleFinalizeSale = async (isElectronic: boolean) => {
+    const handleFinalizeSale = async (isElectronic: boolean, elecData?: any) => {
         setLoading(true);
         try {
             const resolvedClientName = clientName?.trim() ? clientName : t('sales.generalClient');
+            let sellerName = 'Sistema';
+            try {
+                const rawUser = localStorage.getItem('current_user');
+                if (rawUser) sellerName = JSON.parse(rawUser).name || JSON.parse(rawUser).username || 'Sistema';
+            } catch { /* ignore */ }
+
             const saleData = {
                 clientName: resolvedClientName,
+                sellerName,
                 type: isElectronic ? 'ELECTRONIC' : 'POS',
+                electronicData: isElectronic ? elecData : undefined,
                 items: cart.map(item => ({
                     productId: item.id,
                     variantId: item.variantId,

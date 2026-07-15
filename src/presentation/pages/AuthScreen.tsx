@@ -3,21 +3,30 @@ import { Lock, User, Eye, EyeOff, ShieldCheck, Smartphone, RefreshCw, AlertTrian
 
 interface AuthScreenProps {
     onLogin: () => void;
+    initialMode?: 'register' | 'login';
+    allowDefaultReviewer?: boolean;
 }
 
 const AUTH_KEY = 'sistema_facturacion_auth_v2';
+const CURRENT_USER_KEY = 'current_user';
 // Remove old broken key from previous installs
 const OLD_AUTH_KEY = 'sistema_facturacion_auth_pin';
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, initialMode = 'login', allowDefaultReviewer }) => {
     const [mode, setMode] = useState<'loading' | 'register' | 'login' | 'reset'>('loading');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [secretQuestion, setSecretQuestion] = useState('');
+    const [secretAnswer, setSecretAnswer] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
+
+    const persistCurrentUser = (username: string, role: 'ADMIN' | 'CASHIER' = 'ADMIN') => {
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ username, role }));
+    };
 
     useEffect(() => {
         // Always remove old key from previous app versions
@@ -28,20 +37,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             try {
                 const parsed = JSON.parse(storedAuth);
                 if (parsed && parsed.username && parsed.password) {
-                    setMode('login');
-                } else {
-                    // Corrupted data - start fresh
-                    localStorage.removeItem(AUTH_KEY);
-                    setMode('register');
+                    setUsername(parsed.username);
+                    setSecretQuestion(parsed.secretQuestion || '');
+                    setSecretAnswer(parsed.secretAnswer || '');
+                    setMode(initialMode === 'register' ? 'register' : 'login');
+                    return;
                 }
             } catch {
-                localStorage.removeItem(AUTH_KEY);
-                setMode('register');
+                // ignore and fall through to register/login selection below
             }
-        } else {
-            setMode('register');
         }
-    }, []);
+
+        setUsername('');
+        setSecretQuestion('');
+        setSecretAnswer('');
+        setPassword('');
+        setConfirmPassword('');
+        setError('');
+        setMode(initialMode === 'register' ? 'register' : 'login');
+    }, [initialMode]);
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -67,12 +81,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             setError('Passwords do not match / Las contraseñas no coinciden');
             return;
         }
+        if (!secretQuestion.trim()) {
+            setError('Please enter a secret question / Ingresa una pregunta secreta');
+            return;
+        }
+        if (!secretAnswer.trim()) {
+            setError('Please enter the secret answer / Ingresa la respuesta secreta');
+            return;
+        }
 
         setLoading(true);
         await new Promise(r => setTimeout(r, 700));
-        const credentials = { username: username.trim(), password };
+        const credentials = {
+            username: username.trim(),
+            password,
+            secretQuestion: secretQuestion.trim(),
+            secretAnswer: secretAnswer.trim().toLowerCase()
+        };
         localStorage.setItem(AUTH_KEY, JSON.stringify(credentials));
-        // Mark has seen welcome so Welcome screen is skipped
+        persistCurrentUser(credentials.username, 'ADMIN');
         localStorage.setItem('has_seen_welcome', 'true');
         setSuccess(true);
         await new Promise(r => setTimeout(r, 900));
@@ -97,33 +124,102 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                 const parsed = JSON.parse(storedAuth);
                 if (parsed.username === username.trim() && parsed.password === password) {
                     setSuccess(true);
+                    persistCurrentUser(parsed.username, 'ADMIN');
                     localStorage.setItem('has_seen_welcome', 'true');
                     await new Promise(r => setTimeout(r, 800));
                     onLogin();
-                } else {
-                    setError('Incorrect username or password / Usuario o contraseña incorrectos');
-                    setLoading(false);
+                    return;
                 }
             } catch {
                 setError('Error reading credentials. Resetting...');
                 localStorage.removeItem(AUTH_KEY);
                 setTimeout(() => setMode('register'), 1500);
                 setLoading(false);
+                return;
             }
         } else {
             setMode('register');
+            setLoading(false);
+            return;
         }
+
+        // Intentar login como cajero (local_users)
+        try {
+            const rawUsers = localStorage.getItem('local_users');
+            if (rawUsers) {
+                const localUsers: any[] = JSON.parse(rawUsers);
+                const cashier = localUsers.find(
+                    (u: any) => u.username === username.trim() && u.password === password
+                );
+                if (cashier) {
+                    setSuccess(true);
+                    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({
+                        username: cashier.username,
+                        name: cashier.name || cashier.username,
+                        role: cashier.role || 'CASHIER'
+                    }));
+                    localStorage.setItem('has_seen_welcome', 'true');
+                    await new Promise(r => setTimeout(r, 800));
+                    onLogin();
+                    return;
+                }
+            }
+        } catch { /* ignorar */ }
+
+        setError('Incorrect username or password / Usuario o contraseña incorrectos');
+        setLoading(false);
     };
 
-    const handleReset = () => {
-        localStorage.removeItem(AUTH_KEY);
-        setUsername('');
-        setPassword('');
-        setConfirmPassword('');
+    const handlePasswordRecovery = async (e: React.FormEvent) => {
+        e.preventDefault();
         setError('');
-        setSuccess(false);
-        setLoading(false);
-        setMode('register');
+
+        if (!username.trim() || !secretAnswer.trim() || !password || !confirmPassword) {
+            setError('Complete username, secret answer and the new password / Completa usuario, respuesta secreta y nueva contraseña');
+            return;
+        }
+
+        if (password.length < 4) {
+            setError('Password must be at least 4 characters / Mínimo 4 caracteres');
+            return;
+        }
+        if (password !== confirmPassword) {
+            setError('Passwords do not match / Las contraseñas no coinciden');
+            return;
+        }
+
+        setLoading(true);
+        await new Promise(r => setTimeout(r, 600));
+        const storedAuth = localStorage.getItem(AUTH_KEY);
+        if (!storedAuth) {
+            setError('No account found / No existe una cuenta guardada');
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const parsed = JSON.parse(storedAuth);
+            if (parsed.username === username.trim() && parsed.secretAnswer?.toLowerCase() === secretAnswer.trim().toLowerCase()) {
+                const updated = { ...parsed, password };
+                localStorage.setItem(AUTH_KEY, JSON.stringify(updated));
+                persistCurrentUser(parsed.username, 'ADMIN');
+                setSuccess(true);
+                setTimeout(() => {
+                    setMode('login');
+                    setPassword('');
+                    setConfirmPassword('');
+                    setSecretAnswer('');
+                    setSuccess(false);
+                    setLoading(false);
+                }, 1200);
+            } else {
+                setError('The secret answer is incorrect / La respuesta secreta es incorrecta');
+                setLoading(false);
+            }
+        } catch {
+            setError('Could not read the account / No se pudo leer la cuenta');
+            setLoading(false);
+        }
     };
 
     const cardStyle: React.CSSProperties = {
@@ -239,12 +335,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                     <h1 style={{ fontSize: 24, fontWeight: 800, color: 'white', margin: '0 0 6px', letterSpacing: '-0.5px' }}>
                         {mode === 'register' ? '👋 Create Account' :
                          mode === 'login' ? 'Welcome Back' :
-                         '🔑 Reset Account'}
+                         '🔑 Recover Account'}
                     </h1>
                     <p style={{ fontSize: 13, color: 'rgba(148,163,184,0.85)', margin: 0, lineHeight: 1.5, maxWidth: 280, marginLeft: 'auto', marginRight: 'auto' }}>
-                        {mode === 'register' ? 'Set up your administrator account to protect your data.' :
+                        {mode === 'register' ? 'Create your account and keep your secret answer in a safe place.' :
                          mode === 'login' ? 'Enter your credentials to access the system.' :
-                         'This will delete the current account and create a new one.'}
+                         'Use your secret answer to recover the password.'}
                     </p>
                 </div>
 
@@ -258,7 +354,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                     </div>
                 )}
 
-                <form onSubmit={mode === 'login' ? handleLogin : handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <form onSubmit={mode === 'login' ? handleLogin : mode === 'reset' ? handlePasswordRecovery : handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {/* Username */}
                     <div>
                         <label style={labelStyle}>
@@ -277,40 +373,93 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                     </div>
 
                     {/* Password */}
-                    <div>
-                        <label style={labelStyle}>
-                            <Lock size={13} /> Password / Contraseña
-                        </label>
-                        <div style={{ position: 'relative' }}>
-                            <input
-                                className="auth-input"
-                                type={showPassword ? 'text' : 'password'}
-                                value={password}
-                                onChange={e => { setPassword(e.target.value); setError(''); }}
-                                placeholder="••••••••"
-                                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                                style={{ ...inputStyle, paddingRight: 46 }}
-                            />
-                            <button type="button" onClick={() => setShowPassword(!showPassword)}
-                                style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(148,163,184,0.7)', padding: 4, display: 'flex' }}>
-                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
+                    {(mode === 'login' || mode === 'register' || mode === 'reset') && (
+                        <div>
+                            <label style={labelStyle}>
+                                <Lock size={13} /> {mode === 'reset' ? 'New Password / Nueva contraseña' : 'Password / Contraseña'}
+                            </label>
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    className="auth-input"
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={password}
+                                    onChange={e => { setPassword(e.target.value); setError(''); }}
+                                    placeholder="••••••••"
+                                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                                    style={{ ...inputStyle, paddingRight: 46 }}
+                                />
+                                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                                    style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(148,163,184,0.7)', padding: 4, display: 'flex' }}>
+                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Confirm Password (register/reset only) */}
                     {(mode === 'register' || mode === 'reset') && (
                         <div>
                             <label style={labelStyle}>
-                                <ShieldCheck size={13} /> Confirm Password / Confirmar
+                                <ShieldCheck size={13} /> {mode === 'reset' ? 'Confirm New Password / Confirmar nueva contraseña' : 'Confirm Password / Confirmar'}
                             </label>
                             <input
                                 className="auth-input"
                                 type={showPassword ? 'text' : 'password'}
                                 value={confirmPassword}
                                 onChange={e => { setConfirmPassword(e.target.value); setError(''); }}
-                                placeholder="Repeat password"
+                                placeholder={mode === 'reset' ? 'Repeat new password' : 'Repeat password'}
                                 autoComplete="new-password"
+                                style={inputStyle}
+                            />
+                        </div>
+                    )}
+
+                    {/* Secret question and answer (register only) */}
+                    {mode === 'register' && (
+                        <>
+                            <div>
+                                <label style={labelStyle}>
+                                    <ShieldCheck size={13} /> Secret Question / Pregunta secreta
+                                </label>
+                                <input
+                                    className="auth-input"
+                                    type="text"
+                                    value={secretQuestion}
+                                    onChange={e => { setSecretQuestion(e.target.value); setError(''); }}
+                                    placeholder="Example: Name of your first pet"
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>
+                                    <ShieldCheck size={13} /> Secret Answer / Respuesta secreta
+                                </label>
+                                <input
+                                    className="auth-input"
+                                    type="text"
+                                    value={secretAnswer}
+                                    onChange={e => { setSecretAnswer(e.target.value); setError(''); }}
+                                    placeholder="Write it down somewhere safe"
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.28)', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#fde68a', lineHeight: 1.45 }}>
+                                Write the secret answer somewhere safe. It will be used to recover your password later.
+                            </div>
+                        </>
+                    )}
+
+                    {mode === 'reset' && (
+                        <div>
+                            <label style={labelStyle}>
+                                <ShieldCheck size={13} /> Secret Answer / Respuesta secreta
+                            </label>
+                            <input
+                                className="auth-input"
+                                type="text"
+                                value={secretAnswer}
+                                onChange={e => { setSecretAnswer(e.target.value); setError(''); }}
+                                placeholder="Your secret answer"
                                 style={inputStyle}
                             />
                         </div>
@@ -349,8 +498,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                             <><ShieldCheck size={18} /> Entering...</>
                         ) : mode === 'login' ? (
                             <><Lock size={18} /> Login / Ingresar</>
+                        ) : mode === 'reset' ? (
+                            <><ShieldCheck size={18} /> Recover Password</>
                         ) : (
-                            <><ShieldCheck size={18} /> {mode === 'reset' ? 'Reset & Create Account' : 'Create Account / Crear Cuenta'}</>
+                            <><ShieldCheck size={18} /> Create Account / Crear Cuenta</>
                         )}
                     </button>
                 </form>
@@ -358,13 +509,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                 {/* Footer links */}
                 <div style={{ textAlign: 'center', marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
                     {mode === 'login' && (
-                        <button className="auth-link" type="button" onClick={() => { setMode('reset'); setUsername(''); setPassword(''); setConfirmPassword(''); setError(''); }}
+                        <button className="auth-link" type="button" onClick={() => { setMode('reset'); setPassword(''); setConfirmPassword(''); setSecretAnswer(''); setError(''); }}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(148,163,184,0.65)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, transition: 'color 0.2s' }}>
                             <RefreshCw size={13} /> Forgot password / Olvidé mi contraseña
                         </button>
                     )}
                     {mode === 'reset' && (
-                        <button className="auth-link" type="button" onClick={() => { setMode('login'); setUsername(''); setPassword(''); setConfirmPassword(''); setError(''); }}
+                        <button className="auth-link" type="button" onClick={() => { setMode('login'); setUsername(''); setPassword(''); setConfirmPassword(''); setSecretAnswer(''); setError(''); }}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(148,163,184,0.65)', fontSize: 13, transition: 'color 0.2s' }}>
                             ← Back to login
                         </button>

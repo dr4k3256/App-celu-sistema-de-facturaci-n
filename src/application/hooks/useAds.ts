@@ -1,15 +1,15 @@
 import { useEffect } from 'react';
 import { AdMob, AdOptions, InterstitialAdPluginEvents } from '@capacitor-community/admob';
 import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
 
 const INTERSTITIAL_ID = 'ca-app-pub-9052649043235197/2910377556';
 const MINUTES_BETWEEN_ADS = 5;
 const LAST_AD_KEY = 'last_ad_time';
 
-// Returns true if the ad should be shown (first time ever, or 5+ minutes have passed)
 const shouldShowAd = (): boolean => {
     const lastStr = localStorage.getItem(LAST_AD_KEY);
-    if (!lastStr) return true; // First open → always show
+    if (!lastStr) return true;
     const elapsed = Date.now() - parseInt(lastStr, 10);
     return elapsed >= MINUTES_BETWEEN_ADS * 60 * 1000;
 };
@@ -19,42 +19,58 @@ export const useAds = () => {
         if (!Capacitor.isNativePlatform()) return;
 
         let adLoaded = false;
+        let adInitialized = false;
+        const listeners: Array<() => void> = [];
 
         const options: AdOptions = {
             adId: INTERSTITIAL_ID,
-            isTesting: false,
+            isTesting: true,
+        };
+
+        const safePrepare = async () => {
+            try {
+                adLoaded = false;
+                await AdMob.prepareInterstitial(options);
+            } catch (e) {
+                console.error('Error preparing interstitial', e);
+            }
+        };
+
+        const showAdIfReady = async () => {
+            if (!adLoaded || !shouldShowAd()) return;
+            try {
+                await AdMob.showInterstitial();
+            } catch (e) {
+                console.error('Error showing interstitial', e);
+            }
         };
 
         const setupAd = async () => {
             try {
                 await AdMob.initialize();
+                adInitialized = true;
 
-                // When ad finishes loading → show it right away if it's time
-                AdMob.addListener(InterstitialAdPluginEvents.Loaded, async () => {
+                const loadedListener = AdMob.addListener(InterstitialAdPluginEvents.Loaded, async () => {
                     adLoaded = true;
-                    if (shouldShowAd()) {
-                        try {
-                            await AdMob.showInterstitial();
-                        } catch (e) {
-                            console.error('Error showing interstitial', e);
-                        }
-                    }
+                    await showAdIfReady();
                 });
 
-                // When user closes the ad → save timestamp and pre-load next one
-                AdMob.addListener(InterstitialAdPluginEvents.Dismissed, async () => {
+                const failedToLoadListener = AdMob.addListener(InterstitialAdPluginEvents.FailedToLoad, (event) => {
+                    adLoaded = false;
+                    console.warn('AdMob failed to load interstitial', event);
+                });
+
+                const dismissedListener = AdMob.addListener(InterstitialAdPluginEvents.Dismissed, async () => {
                     adLoaded = false;
                     localStorage.setItem(LAST_AD_KEY, Date.now().toString());
-                    try {
-                        await AdMob.prepareInterstitial(options);
-                    } catch (e) {
-                        console.error('Error pre-loading next interstitial', e);
-                    }
+                    await safePrepare();
                 });
 
-                // Kick off: load ad on start — Loaded listener above will show it
-                await AdMob.prepareInterstitial(options);
+                listeners.push(() => loadedListener.remove());
+                listeners.push(() => failedToLoadListener.remove());
+                listeners.push(() => dismissedListener.remove());
 
+                await safePrepare();
             } catch (e) {
                 console.error('AdMob init error', e);
             }
@@ -62,29 +78,27 @@ export const useAds = () => {
 
         setupAd();
 
-        // When app comes back to foreground
-        const handleResume = async () => {
-            if (!shouldShowAd()) return;
-            if (adLoaded) {
-                try {
-                    await AdMob.showInterstitial();
-                } catch (e) {
-                    console.error('Error showing ad on resume', e);
-                }
-            } else {
-                // Not loaded yet → prepare (Loaded listener will show it)
-                try {
-                    await AdMob.prepareInterstitial(options);
-                } catch (e) {
-                    console.error('Error preparing ad on resume', e);
-                }
+        const handleAppResume = async () => {
+            if (!adInitialized) return;
+            if (shouldShowAd()) {
+                await safePrepare();
             }
         };
 
-        document.addEventListener('resume', handleResume);
+        const pushListener = async (eventName: string, callback: () => void) => {
+            try {
+                const listener = await App.addListener(eventName, callback);
+                listeners.push(() => listener.remove());
+            } catch (e) {
+                console.error(`App listener ${eventName} error`, e);
+            }
+        };
+
+        pushListener('appStateChange', handleAppResume);
+        pushListener('resume', handleAppResume);
 
         return () => {
-            document.removeEventListener('resume', handleResume);
+            listeners.forEach((remove) => remove());
             AdMob.removeAllListeners();
         };
     }, []);

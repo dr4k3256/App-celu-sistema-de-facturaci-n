@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import MobileLayout from './presentation/MobileLayout';
 import Dashboard from './presentation/pages/Dashboard';
@@ -21,43 +21,79 @@ import { useAds } from './application/hooks/useAds';
 // Keys in localStorage
 const SESSION_KEY = 'facturador_session_active';
 const AUTH_KEY = 'sistema_facturacion_auth_v2';
-const WELCOME_KEY = 'has_seen_welcome';
+const CURRENT_USER_KEY = 'current_user';
+const FIRST_RUN_KEY = 'app_first_run_completed';
 
 type AppScreen = 'welcome' | 'auth' | 'app';
+type AuthMode = 'register' | 'login';
 
-/** Determine the starting screen based on persisted state */
+const getActiveSession = () => sessionStorage.getItem(SESSION_KEY) === 'true';
+const setActiveSession = (value: boolean) => {
+    if (value) {
+        sessionStorage.setItem(SESSION_KEY, 'true');
+    } else {
+        sessionStorage.removeItem(SESSION_KEY);
+    }
+};
+
+/** Determine the starting screen based on first-run state and the current session */
 function getInitialScreen(): AppScreen {
-    // Active session → go straight into app
-    if (localStorage.getItem(SESSION_KEY) === 'true') return 'app';
-    // Has credentials but no session → ask for login
-    if (localStorage.getItem(AUTH_KEY)) return 'auth';
-    // Brand new install → show welcome choice
-    return 'welcome';
+    const isFirstRun = localStorage.getItem(FIRST_RUN_KEY) !== 'true';
+    if (isFirstRun) {
+        localStorage.setItem(FIRST_RUN_KEY, 'true');
+        return 'welcome';
+    }
+
+    if (getActiveSession()) return 'app';
+    return 'auth';
 }
 
 function App() {
     useAds();
     const [screen, setScreen] = useState<AppScreen>(getInitialScreen);
+    const [authMode, setAuthMode] = useState<AuthMode>('login');
     // Used to open backup panel automatically after register (restore flow)
     const [openBackupAfterAuth, setOpenBackupAfterAuth] = useState(false);
 
+    useEffect(() => {
+        if (screen === 'app' && openBackupAfterAuth) {
+            window.location.hash = '#/security';
+            setOpenBackupAfterAuth(false);
+        }
+    }, [screen, openBackupAfterAuth]);
+
     /** Called when user picks "New User" on welcome screen */
     const handleWelcomeNewUser = () => {
-        localStorage.setItem(WELCOME_KEY, 'true');
+        localStorage.setItem(FIRST_RUN_KEY, 'true');
+        setActiveSession(false);
+        setOpenBackupAfterAuth(false);
+        setAuthMode('register');
         setScreen('auth');
     };
 
     /** Called when user picks "Restore Backup" on welcome screen */
     const handleWelcomeRestore = () => {
-        localStorage.setItem(WELCOME_KEY, 'true');
+        localStorage.setItem(FIRST_RUN_KEY, 'true');
+        setActiveSession(false);
         setOpenBackupAfterAuth(true);
+        setAuthMode('register');
         setScreen('auth');
     };
 
     /** Called by AuthScreen when login/register succeeds */
     const handleLogin = () => {
-        localStorage.setItem(SESSION_KEY, 'true');
+        setActiveSession(true);
+        setAuthMode('login');
         setScreen('app');
+    };
+
+    /** Called when user logs out */
+    const handleLogout = () => {
+        setActiveSession(false);
+        localStorage.removeItem(CURRENT_USER_KEY);
+        sessionStorage.clear();
+        setAuthMode('login');
+        setScreen('auth');
     };
 
     // ── Welcome choice screen (brand new install) ───────────────────────────
@@ -76,7 +112,7 @@ function App() {
     if (screen === 'auth') {
         return (
             <AlertProvider>
-                <AuthScreen onLogin={handleLogin} />
+                <AuthScreen onLogin={handleLogin} initialMode={authMode} allowDefaultReviewer={false} />
             </AlertProvider>
         );
     }
@@ -87,7 +123,7 @@ function App() {
             <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                 <Routes>
                     <Route path="/*" element={
-                        <MobileLayout>
+                        <MobileLayout onLogout={handleLogout}>
                             <Routes>
                                 <Route path="/home" element={<Dashboard />} />
                                 <Route path="/catalog" element={<Catalog />} />

@@ -6,6 +6,10 @@ import { Search, Package, Plus, Minus, CheckCircle } from 'lucide-react';
 import { useDependencies } from '../../application/DependenciesContext';
 import { Product } from '../../domain/models';
 import { useAlert } from '../context/AlertContext';
+import { Share } from '@capacitor/share';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import html2canvas from 'html2canvas';
 
 const VariantSelectorModal = ({ isOpen, onClose, product, onSelect }: any) => {
     const { t } = useTranslation();
@@ -37,18 +41,76 @@ const VariantSelectorModal = ({ isOpen, onClose, product, onSelect }: any) => {
 
 const ConfirmQuoteModal = ({ isOpen, onClose, quoteData }: any) => {
     const { t } = useTranslation();
+    const { showToast } = useAlert();
     if (!isOpen) return null;
     const total = quoteData.items.reduce((acc: number, it: any) => acc + (it.unitPrice || 0) * (it.quantity || 0), 0);
 
-    const downloadPDF = () => {
-        const rowsHtml = quoteData.items.map((it: any) => `<tr><td>${it.name}</td><td>${it.quantity}</td><td style="text-align:right">${it.unitPrice}</td><td style="text-align:right">${(it.unitPrice * it.quantity).toFixed(2)}</td></tr>`).join('');
-        const html = `<!doctype html><html><head><meta charset="utf-8"><title>Cotización</title><style>body{font-family:Arial,Helvetica,sans-serif}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px}</style></head><body><h2>Cotización para ${quoteData.clientName}</h2><table><thead><tr><th>Producto</th><th>Cant</th><th>Precio</th><th>Subtotal</th></tr></thead><tbody>${rowsHtml}</tbody></table><div style="text-align:right;margin-top:12px;font-weight:bold">Total: ${total.toFixed(2)}</div></body></html>`;
-        const w = window.open('', '_blank');
-        if (!w) return;
-        w.document.open();
-        w.document.write(html);
-        w.document.close();
-        setTimeout(() => w.print(), 500);
+    const buildQuoteHtml = () => {
+        return `<!doctype html><html><head><meta charset="utf-8"><title>Cotización</title><style>body{font-family:Arial,Helvetica,sans-serif;background:#f7f9fc;color:#111;margin:0;padding:24px}.wrapper{max-width:720px;margin:0 auto;border:1px solid #e5e7eb;border-radius:16px;padding:24px;background:#fff}h1{font-size:24px;margin-bottom:12px}p{margin:0 0 12px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:10px;border:1px solid #e5e7eb;text-align:left}th{background:#f8fafc;font-weight:700}.total{text-align:right;margin-top:18px;font-size:18px;font-weight:700}</style></head><body><div class="wrapper"><h1>Cotización</h1><p><strong>Cliente:</strong> ${quoteData.clientName}</p><p><strong>Fecha:</strong> ${new Date().toLocaleString()}</p><table><thead><tr><th>Producto</th><th>Cant</th><th>Precio</th><th>Subtotal</th></tr></thead><tbody>${quoteData.items.map((it: any) => `<tr><td>${it.name}</td><td>${it.quantity}</td><td style="text-align:right">${formatMoney(it.unitPrice)}</td><td style="text-align:right">${formatMoney((it.unitPrice || 0) * (it.quantity || 0))}</td></tr>`).join('')}</tbody></table><div class="total">Total: ${formatMoney(total)}</div></div></body></html>`;
+    };
+
+    const renderQuoteImage = async (html: string) => {
+        const captureContainer = document.createElement('div');
+        captureContainer.style.position = 'fixed';
+        captureContainer.style.left = '-9999px';
+        captureContainer.style.top = '0';
+        captureContainer.style.width = '720px';
+        captureContainer.style.backgroundColor = '#ffffff';
+        captureContainer.innerHTML = html;
+        document.body.appendChild(captureContainer);
+
+        const canvas = await html2canvas(captureContainer, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+        document.body.removeChild(captureContainer);
+        return canvas.toDataURL('image/png');
+    };
+
+    const downloadPDF = async () => {
+        const lines = quoteData.items.map((it: any) => `${it.name} x${it.quantity} - ${formatMoney(it.unitPrice)} = ${formatMoney((it.unitPrice || 0) * (it.quantity || 0))}`);
+        const message = `Cotización para ${quoteData.clientName}\n\n${lines.join('\n')}\n\nTotal: ${formatMoney(total)}`;
+
+        try {
+            const html = buildQuoteHtml();
+            const imageDataUrl = await renderQuoteImage(html);
+
+            if (Capacitor.isNativePlatform()) {
+                const base64String = imageDataUrl.split(',')[1];
+                const fileName = `cotizacion_${Date.now()}.png`;
+                const savedFile = await Filesystem.writeFile({
+                    path: fileName,
+                    data: base64String,
+                    directory: Directory.Cache,
+                });
+
+                await Share.share({
+                    title: `Cotización ${quoteData.clientName}`,
+                    text: `Adjunto cotización para ${quoteData.clientName}`,
+                    url: savedFile.uri,
+                    dialogTitle: 'Compartir Cotización',
+                });
+                return;
+            }
+
+            const response = await fetch(imageDataUrl);
+            const blob = await response.blob();
+            const file = new File([blob], `cotizacion_${Date.now()}.png`, { type: 'image/png' });
+
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    title: `Cotización ${quoteData.clientName}`,
+                    text: `Adjunto cotización para ${quoteData.clientName}`,
+                    files: [file],
+                });
+                return;
+            }
+
+            const link = document.createElement('a');
+            link.download = `cotizacion_${Date.now()}.png`;
+            link.href = imageDataUrl;
+            link.click();
+        } catch (error) {
+            console.error('Share failed', error);
+            showToast('No se pudo compartir la cotización', 'error');
+        }
     };
 
     return (
@@ -68,7 +130,7 @@ const ConfirmQuoteModal = ({ isOpen, onClose, quoteData }: any) => {
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={downloadPDF} className="flex-1 py-2 bg-emerald-600 text-white rounded">Descargar Cotización (PDF)</button>
+                    <button onClick={downloadPDF} className="flex-1 py-2 bg-emerald-600 text-white rounded">Compartir / Descargar Cotización</button>
                     <button onClick={onClose} className="flex-1 py-2 glass rounded">Cerrar</button>
                 </div>
             </div>
@@ -153,8 +215,15 @@ const Quotes = () => {
     const handleCreateInvoice = async () => {
         if (cart.length === 0) return showToast('Añada productos', 'error');
         try {
+            let sellerName = 'Sistema';
+            try {
+                const rawUser = localStorage.getItem('current_user');
+                if (rawUser) sellerName = JSON.parse(rawUser).name || JSON.parse(rawUser).username || 'Sistema';
+            } catch { /* ignore */ }
+
             const saleData = {
                 clientName,
+                sellerName,
                 type: 'POS',
                 items: cart.map((it: any) => ({ productId: it.id, variantId: it.variantId, quantity: it.quantity, unitPrice: it.unitPrice }))
             };

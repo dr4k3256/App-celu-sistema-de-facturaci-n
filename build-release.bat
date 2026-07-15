@@ -1,6 +1,7 @@
 @echo off
 set JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
 set JAVA_BIN=C:\Program Files\Android\Android Studio\jbr\bin
+set PATH=%JAVA_BIN%;%PATH%
 set KEYSTORE=facturador.jks
 set ALIAS=facturador
 set PASS=Facturador123
@@ -25,7 +26,7 @@ call gradlew.bat assembleRelease
 if %errorlevel% neq 0 (echo ERROR en gradle & cd .. & exit /b %errorlevel%)
 cd ..
 
-set APK_PATH=android\app\build\outputs\apk\release\app-release-unsigned.apk
+set APK_PATH=android\app\build\outputs\apk\release\app-release.apk
 
 echo === PASO 5: Alineando APK ===
 "%BUILD_TOOLS%\zipalign.exe" -f -v -p 4 "%APK_PATH%" "app-aligned.apk"

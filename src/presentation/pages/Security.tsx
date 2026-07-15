@@ -3,20 +3,49 @@ import { Shield, Key, Users, ShieldCheck, Eye, EyeOff, CheckCircle, Download, Up
 import { useAlert } from '../context/AlertContext';
 import { useDependencies } from '../../application/DependenciesContext';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import { Capacitor } from '@capacitor/core';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { checkPlayStoreAvailability, getAppSetId, checkForUpdates, openPlayStore } from '../../infrastructure/playInstall';
+
+const AUTH_KEY_CP = 'sistema_facturacion_auth_v2';
 
 const ChangePasswordForm = () => {
-    const [currentPassword, setCurrentPassword] = useState('');
+    const [secretAnswer, setSecretAnswer] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [showCurrent, setShowCurrent] = useState(false);
     const [showNew, setShowNew] = useState(false);
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [step, setStep] = useState<'verify' | 'change'>('verify');
+    const [secretQuestion, setSecretQuestion] = useState('');
     const { showToast } = useAlert();
     const { t } = useTranslation();
+
+    React.useEffect(() => {
+        try {
+            const raw = localStorage.getItem(AUTH_KEY_CP);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                setSecretQuestion(parsed.secretQuestion || 'Respuesta secreta');
+            }
+        } catch { /* ignore */ }
+    }, []);
+
+    const handleVerifySecret = (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            const raw = localStorage.getItem(AUTH_KEY_CP);
+            if (!raw) { showToast('No se encontró la cuenta', 'error'); return; }
+            const parsed = JSON.parse(raw);
+            if (parsed.secretAnswer?.toLowerCase() === secretAnswer.trim().toLowerCase()) {
+                setStep('change');
+            } else {
+                showToast('Respuesta secreta incorrecta', 'error');
+            }
+        } catch { showToast('Error al verificar', 'error'); }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -30,15 +59,16 @@ const ChangePasswordForm = () => {
         }
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:8080/api/auth/change-password', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ currentPassword, newPassword })
-            });
-            if (!res.ok) throw new Error('Contraseña actual incorrecta');
+            const raw = localStorage.getItem(AUTH_KEY_CP);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                const updated = { ...parsed, password: newPassword };
+                localStorage.setItem(AUTH_KEY_CP, JSON.stringify(updated));
+            }
             showToast(t('security.passwordChanged'), 'success');
             setSuccess(true);
-            setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
+            setSecretAnswer(''); setNewPassword(''); setConfirmPassword('');
+            setStep('verify');
             setTimeout(() => setSuccess(false), 4000);
         } catch (err: any) {
             showToast(err.message || 'Error al cambiar la contraseña', 'error');
@@ -47,27 +77,44 @@ const ChangePasswordForm = () => {
         }
     };
 
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            {success && (
-                <div className="flex items-center gap-2 p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-sm">
-                    <CheckCircle size={16} /> {t('security.passwordChanged')}
+    if (step === 'verify') {
+        return (
+            <form onSubmit={handleVerifySecret} className="space-y-4">
+                {success && (
+                    <div className="flex items-center gap-2 p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-sm">
+                        <CheckCircle size={16} /> {t('security.passwordChanged')}
+                    </div>
+                )}
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300">
+                    🔐 Para cambiar la contraseña debes verificar tu identidad con la respuesta secreta.
                 </div>
-            )}
-            <div className="relative">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">{t('security.currentPassword')}</label>
-                <div className="flex items-center border-b border-border">
+                {secretQuestion && (
+                    <p className="text-xs text-muted-foreground italic">
+                        Pregunta: <strong className="text-foreground">{secretQuestion}</strong>
+                    </p>
+                )}
+                <div>
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Respuesta Secreta</label>
                     <input
-                        type={showCurrent ? 'text' : 'password'}
-                        className="flex-1 bg-transparent py-2 text-sm outline-none"
-                        value={currentPassword}
-                        onChange={e => setCurrentPassword(e.target.value)}
+                        type="text"
+                        className="w-full bg-transparent border-b border-border py-2 text-sm outline-none"
+                        value={secretAnswer}
+                        onChange={e => setSecretAnswer(e.target.value)}
+                        placeholder="Tu respuesta secreta"
                         required
                     />
-                    <button type="button" onClick={() => setShowCurrent(!showCurrent)} className="text-muted-foreground">
-                        {showCurrent ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
                 </div>
+                <button type="submit" className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-sm">
+                    Verificar identidad
+                </button>
+            </form>
+        );
+    }
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="flex items-center gap-2 p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-sm">
+                <CheckCircle size={16} /> Identidad verificada. Ingresa tu nueva contraseña.
             </div>
             <div className="relative">
                 <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">{t('security.newPassword')}</label>
@@ -130,6 +177,30 @@ const BackupRestorePanel = ({ autoOpen }: { autoOpen?: boolean }) => {
         }
     }, [autoOpen]);
 
+    useEffect(() => {
+        const loadPlayStatus = async () => {
+            if (!Capacitor.isNativePlatform()) return;
+            setCheckingPlay(true);
+            try {
+                const availability = await checkPlayStoreAvailability();
+                const appSetInfo = await getAppSetId();
+                const updateInfo = await checkForUpdates();
+                setPlayStatus({
+                    available: availability.playStoreAvailable,
+                    appSetId: appSetInfo.appSetId,
+                    scope: appSetInfo.scope,
+                    updateAvailable: updateInfo.updateAvailable
+                });
+            } catch (error) {
+                console.warn('Play integration not available', error);
+            } finally {
+                setCheckingPlay(false);
+            }
+        };
+
+        loadPlayStatus();
+    }, []);
+
     const handleExport = async () => {
         try {
             setLoading(true);
@@ -138,15 +209,25 @@ const BackupRestorePanel = ({ autoOpen }: { autoOpen?: boolean }) => {
 
             if (Capacitor.isNativePlatform()) {
                 try {
-                    await Filesystem.writeFile({
+                    // Always write to Cache directory for sharing
+                    const savedFile = await Filesystem.writeFile({
                         path: fileName,
                         data: data,
-                        directory: Directory.Documents,
+                        directory: Directory.Cache,
                         encoding: Encoding.UTF8
                     });
-                    showToast(`${t('security.exportSuccess')}. Archivo guardado en Documentos/${fileName}`, 'success');
+
+                    // Use Share API so the user can choose where to save (Drive, Files, etc.)
+                    await Share.share({
+                        title: `Copia de Seguridad - ${fileName}`,
+                        text: 'Aquí está la copia de seguridad de tu facturador.',
+                        url: savedFile.uri,
+                        dialogTitle: 'Guardar copia de seguridad en...'
+                    });
+                    
+                    showToast(t('security.exportSuccess'), 'success');
                 } catch (e: any) {
-                    showToast(`Error al guardar archivo: ${e.message}`, 'error');
+                    showToast(`Error al compartir/guardar archivo: ${e.message}`, 'error');
                 }
             } else {
                 const blob = new Blob([data], { type: 'application/json' });
@@ -258,6 +339,8 @@ const Security = ({ openBackupOnMount }: { openBackupOnMount?: boolean }) => {
     const [newPassword, setNewPassword] = useState('');
     const [newRole, setNewRole] = useState('CASHIER');
     const [creating, setCreating] = useState(false);
+    const [playStatus, setPlayStatus] = useState({ available: false, appSetId: '', scope: '', updateAvailable: false });
+    const [checkingPlay, setCheckingPlay] = useState(false);
     const { showToast, confirm } = useAlert();
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
@@ -288,6 +371,17 @@ const Security = ({ openBackupOnMount }: { openBackupOnMount?: boolean }) => {
             setUsers(data || []);
         } catch (err) {
             console.error('Error fetching users:', err);
+            // Fallback: load local_users from localStorage
+            try {
+                const raw = localStorage.getItem('local_users');
+                if (raw) {
+                    setUsers(JSON.parse(raw));
+                } else {
+                    setUsers([]);
+                }
+            } catch (e) {
+                setUsers([]);
+            }
         }
     };
 
@@ -309,12 +403,34 @@ const Security = ({ openBackupOnMount }: { openBackupOnMount?: boolean }) => {
                 body: JSON.stringify({ username: newUsername, password: newPassword, name: newName, role: newRole })
             });
             if (!res.ok) throw new Error('Error creando usuario');
+            // También guardar localmente con contraseña para login offline
+            const rawLocal = localStorage.getItem('local_users');
+            const localList = rawLocal ? JSON.parse(rawLocal) : [];
+            const existsIdx = localList.findIndex((u: any) => u.username === newUsername);
+            const userEntry = { username: newUsername, name: newName, role: newRole, password: newPassword };
+            if (existsIdx >= 0) localList[existsIdx] = userEntry;
+            else localList.push(userEntry);
+            localStorage.setItem('local_users', JSON.stringify(localList));
             setNewUsername(''); setNewName(''); setNewPassword(''); setNewRole('CASHIER');
             await fetchUsers();
             showToast('Usuario creado', 'success');
         } catch (err: any) {
             console.error('Create user error', err);
-            showToast(err.message || 'No se pudo crear el usuario', 'error');
+            // Fallback: save user locally with password
+            try {
+                const raw = localStorage.getItem('local_users');
+                const list = raw ? JSON.parse(raw) : [];
+                const existsIdx = list.findIndex((u: any) => u.username === newUsername);
+                const userEntry = { username: newUsername, name: newName, role: newRole, password: newPassword };
+                if (existsIdx >= 0) list[existsIdx] = userEntry;
+                else list.push(userEntry);
+                localStorage.setItem('local_users', JSON.stringify(list));
+                setNewUsername(''); setNewName(''); setNewPassword(''); setNewRole('CASHIER');
+                await fetchUsers();
+                showToast('Usuario creado (modo local)', 'success');
+            } catch (e) {
+                showToast(err.message || 'No se pudo crear el usuario', 'error');
+            }
         } finally {
             setCreating(false);
         }
@@ -349,7 +465,29 @@ const Security = ({ openBackupOnMount }: { openBackupOnMount?: boolean }) => {
             cancelEdit();
             showToast('Usuario actualizado', 'success');
         } catch (err: any) {
-            showToast(err.message || 'No se pudo actualizar', 'error');
+            console.error('Update user error', err);
+            // Fallback: update local_users if present
+            try {
+                const raw = localStorage.getItem('local_users');
+                if (raw) {
+                    const list = JSON.parse(raw);
+                    const idx = list.findIndex((x: any) => (x.id || x.username) === id || x.username === id);
+                    if (idx >= 0) {
+                        list[idx].name = editName;
+                        list[idx].role = editRole;
+                        localStorage.setItem('local_users', JSON.stringify(list));
+                        await fetchUsers();
+                        cancelEdit();
+                        showToast('Usuario actualizado (modo local)', 'success');
+                    } else {
+                        showToast(err.message || 'No se pudo actualizar', 'error');
+                    }
+                } else {
+                    showToast(err.message || 'No se pudo actualizar', 'error');
+                }
+            } catch (e) {
+                showToast(err.message || 'No se pudo actualizar', 'error');
+            }
         } finally {
             setUpdating(false);
         }
@@ -367,7 +505,21 @@ const Security = ({ openBackupOnMount }: { openBackupOnMount?: boolean }) => {
             await fetchUsers();
             showToast('Usuario eliminado', 'success');
         } catch (err: any) {
-            showToast(err.message || 'No se pudo eliminar', 'error');
+            console.error('Delete user error', err);
+            // Fallback: remove from local_users
+            try {
+                const raw = localStorage.getItem('local_users');
+                if (raw) {
+                    const list = JSON.parse(raw).filter((x: any) => (x.id || x.username) !== id && x.username !== id);
+                    localStorage.setItem('local_users', JSON.stringify(list));
+                    await fetchUsers();
+                    showToast('Usuario eliminado (modo local)', 'success');
+                } else {
+                    showToast(err.message || 'No se pudo eliminar', 'error');
+                }
+            } catch (e) {
+                showToast(err.message || 'No se pudo eliminar', 'error');
+            }
         } finally {
             setDeletingId(null);
         }
@@ -505,6 +657,30 @@ const Security = ({ openBackupOnMount }: { openBackupOnMount?: boolean }) => {
                         <div className="flex items-center gap-2 mt-3">
                             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                             <span className="text-xs text-green-400 font-bold">{t('security.operational')}</span>
+                        </div>
+                        <div className="mt-4 text-xs text-muted-foreground space-y-2">
+                            <div className="flex items-center justify-between gap-3">
+                                <span>{t('security.playStoreStatus')}</span>
+                                <span className={`text-[11px] font-semibold ${playStatus.available ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                    {checkingPlay ? t('security.checking') : playStatus.available ? t('security.available') : t('security.unavailable')}
+                                </span>
+                            </div>
+                            {playStatus.appSetId && (
+                                <div className="flex items-center justify-between gap-3">
+                                    <span>{t('security.playAppSetId')}</span>
+                                    <span className="text-[11px] font-medium text-muted-foreground truncate">{playStatus.appSetId}</span>
+                                </div>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => openPlayStore({ packageName: undefined })}
+                                className="w-full text-left text-[11px] text-blue-300 hover:text-blue-100"
+                            >
+                                {t('security.openPlayStore')}
+                            </button>
+                            {playStatus.updateAvailable && (
+                                <div className="text-[11px] text-yellow-200">{t('security.playUpdateAvailable')}</div>
+                            )}
                         </div>
                     </div>
                 </div>

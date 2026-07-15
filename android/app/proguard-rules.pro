@@ -1,21 +1,41 @@
 # Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# ===== CAPACITOR CORE =====
+-keep class com.getcapacitor.** { *; }
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+-keep class * extends com.getcapacitor.Plugin { *; }
+-keepclassmembers class * extends com.getcapacitor.Plugin {
+    @com.getcapacitor.annotation.PluginMethod public *;
+}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# ===== WEBVIEW JAVASCRIPT INTERFACE =====
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# ===== APP CUSTOM CLASSES =====
+-keep class com.sistemafacturacion.celu.** { *; }
+
+# ===== ADMOB =====
+-keep class com.google.android.gms.ads.** { *; }
+-keep class com.google.ads.** { *; }
+
+# ===== SQLITE =====
+-keep class io.ionic.libs.** { *; }
+-keep class com.capacitorcommunitysqlite.** { *; }
+
+# ===== PLAY CORE (app-update, review) =====
+-keep class com.google.android.play.core.** { *; }
+
+# ===== KOTLIN & COROUTINES =====
+-keep class kotlin.** { *; }
+-keep class kotlinx.coroutines.** { *; }
+-dontwarn kotlinx.coroutines.**
+
+# ===== RETROFIT / GSON (si aplica) =====
+-dontwarn okhttp3.**
+-dontwarn retrofit2.**
+
+# ===== DEBUGGING: preservar números de línea en stack traces =====
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

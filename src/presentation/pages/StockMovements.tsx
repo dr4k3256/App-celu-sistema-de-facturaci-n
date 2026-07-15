@@ -1,9 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import  { useState, useEffect } from 'react';
 import { History, ArrowUpRight, ArrowDownRight, RefreshCw, Filter, Search, Trash2 } from 'lucide-react';
 import { useDependencies } from '../../application/DependenciesContext';
-import { toast } from 'react-hot-toast';
+import { useAlert } from '../context/AlertContext';
 import ConfirmModal from '../components/ConfirmModal';
 
 const MOVEMENT_TYPES: Record<string, { label: string; color: string }> = {
@@ -17,6 +16,7 @@ const MOVEMENT_TYPES: Record<string, { label: string; color: string }> = {
 const StockMovements = () => {
     const { t } = useTranslation();
     const { stockUseCases } = useDependencies();
+    const { showToast } = useAlert();
     const [movements, setMovements] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -30,7 +30,7 @@ const StockMovements = () => {
             setMovements(data || []);
         } catch (error) {
             console.error('Error fetching movements:', error);
-            toast.error('Error al cargar movimientos');
+            showToast('Error al cargar movimientos', 'error');
         } finally {
             setLoading(false);
         }
@@ -39,11 +39,11 @@ const StockMovements = () => {
     const handleClearHistory = async () => {
         try {
             await stockUseCases.deleteMovements();
-            toast.success('Historial limpiado correctamente');
+            showToast('Historial limpiado correctamente', 'success');
             fetchMovements();
         } catch (error) {
             console.error('Error clearing history:', error);
-            toast.error('Error al limpiar el historial');
+            showToast('Error al limpiar el historial', 'error');
         } finally {
             setShowClearModal(false);
         }

@@ -44,7 +44,6 @@ const Finances = () => {
                     </span>
                 </div>
             </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 glass p-6">
                     <h4 className="text-lg font-semibold mb-6">Balance Mensual: Ventas vs Gastos</h4>
@@ -69,14 +68,19 @@ const Finances = () => {
                 <div className="space-y-6">
                     <div className="glass p-6 text-center">
                         <div className="flex justify-center mb-4">
-                            <div className="p-3 bg-green-500/10 text-green-400 rounded-full">
-                                <TrendingUp size={24} />
+                            <div className={`p-3 rounded-full ${report?.utility >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                {report?.utility >= 0 ? <TrendingUp size={24} /> : <TrendingDown size={24} />}
                             </div>
                         </div>
-                        <p className="text-xs text-muted-foreground uppercase font-bold">Utilidad Bruta (Mes)</p>
-                        <p className="text-2xl font-bold mt-1 text-green-400">
-                            {loading ? '...' : `${formatMoney(report?.totalProfit || 0)}`}
+                        <p className="text-xs text-muted-foreground uppercase font-bold">Utilidad Neta (Mes)</p>
+                        <p className={`text-2xl font-bold mt-1 ${report?.utility >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {loading ? '...' : `${formatMoney(report?.utility || 0)}`}
                         </p>
+                        {!loading && report && (
+                            <p className={`text-[10px] mt-2 font-medium px-2 py-1 rounded ${report.utility >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                {report.utility >= 0 ? '¡Buen trabajo! Las ventas superan los gastos.' : 'Alerta: Los gastos son mayores que las ventas.'}
+                            </p>
+                        )}
                     </div>
 
                     <div className="glass p-6 text-center">
